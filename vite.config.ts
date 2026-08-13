@@ -17,7 +17,10 @@ const localBindingConfig = {
   assets: {
     directory: "./dist/client",
     html_handling: "none" as const,
-    run_worker_first: ["/googlef52a125fcc3f3dd3.html"],
+    run_worker_first: [
+      "/googlef52a125fcc3f3dd3.html",
+      "/googlecc06e13e9b63a95f.html",
+    ],
   },
   d1_databases: d1
     ? [

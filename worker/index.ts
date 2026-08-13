@@ -29,17 +29,21 @@ const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === "/googlef52a125fcc3f3dd3.html") {
-      return new Response(
+    const googleVerificationFiles: Record<string, string> = {
+      "/googlef52a125fcc3f3dd3.html":
         "google-site-verification: googlef52a125fcc3f3dd3.html",
-        {
-          status: 200,
-          headers: {
-            "content-type": "text/html; charset=utf-8",
-            "cache-control": "public, max-age=300",
-          },
+      "/googlecc06e13e9b63a95f.html":
+        "google-site-verification: googlecc06e13e9b63a95f.html",
+    };
+    const googleVerification = googleVerificationFiles[url.pathname];
+    if (googleVerification) {
+      return new Response(googleVerification, {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "public, max-age=300",
         },
-      );
+      });
     }
 
     if (url.pathname === "/_vinext/image") {

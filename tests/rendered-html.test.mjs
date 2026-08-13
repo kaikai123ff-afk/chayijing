@@ -89,16 +89,28 @@ test("publishes product-specific social metadata", async () => {
     ),
     "google-site-verification: googlef52a125fcc3f3dd3.html\n",
   );
+  assert.equal(
+    await readFile(
+      new URL("../public/googlecc06e13e9b63a95f.html", import.meta.url),
+      "utf8",
+    ),
+    "google-site-verification: googlecc06e13e9b63a95f.html\n",
+  );
 });
 
 test("serves the Google verification token without redirecting", async () => {
-  const response = await fetchWorker("/googlef52a125fcc3f3dd3.html");
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("location"), null);
-  assert.equal(
-    await response.text(),
-    "google-site-verification: googlef52a125fcc3f3dd3.html",
-  );
+  for (const token of [
+    "googlef52a125fcc3f3dd3",
+    "googlecc06e13e9b63a95f",
+  ]) {
+    const response = await fetchWorker(`/${token}.html`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("location"), null);
+    assert.equal(
+      await response.text(),
+      `google-site-verification: ${token}.html`,
+    );
+  }
 });
 
 test("removes the disposable starter and keeps local comparison safeguards", async () => {
