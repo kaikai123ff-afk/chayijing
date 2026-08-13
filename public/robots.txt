@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://zhuzijing-code-diff.linzirongxxyy.chatgpt.site/sitemap.xml

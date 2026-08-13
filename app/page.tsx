@@ -584,11 +584,11 @@ export default function Home() {
   return (
     <main>
       <header className="site-header">
-        <a className="brand" href="#top" aria-label="逐字镜首页">
+        <a className="brand" href="#top" aria-label="代码对比逐字镜首页">
           <span className="brand-mark" aria-hidden="true">
             Δ
           </span>
-          <span>逐字镜</span>
+          <span>代码对比逐字镜</span>
           <span className="brand-version">DIFF</span>
         </a>
         <div className="header-status">
@@ -891,7 +891,7 @@ export default function Home() {
       <footer>
         <div>
           <span className="footer-mark">Δ</span>
-          <strong>逐字镜</strong>
+          <strong>代码对比逐字镜</strong>
         </div>
         <p>所有比较都在你的浏览器内完成。</p>
       </footer>

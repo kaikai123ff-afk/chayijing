@@ -32,7 +32,7 @@ test("server-renders the complete code comparison workbench", async () => {
 
   const html = await response.text();
   assert.match(html, /<html[^>]*lang="zh-CN"/i);
-  assert.match(html, /<title>逐字镜｜精确代码对比工具<\/title>/i);
+  assert.match(html, /<title>代码对比逐字镜｜精确代码对比工具<\/title>/i);
   assert.match(html, /代码差在哪，<em>一眼看清。<\/em>/);
   assert.match(html, /aria-label="原始版本代码"/);
   assert.match(html, /aria-label="新版本代码"/);
@@ -43,6 +43,9 @@ test("server-renders the complete code comparison workbench", async () => {
   assert.match(html, /复制差异/);
   assert.match(html, /aria-live="polite"/);
   assert.match(html, /本地处理 · 代码不会上传/);
+  assert.match(html, /代码对比逐字镜首页/);
+  assert.match(html, /"@type":"WebApplication"/);
+  assert.match(html, /"name":"代码对比逐字镜"/);
   assert.match(html, /class="token token-removed">userId<\/span>/);
   assert.match(html, /class="token token-added">id<\/span>/);
 });
@@ -51,13 +54,20 @@ test("publishes product-specific social metadata", async () => {
   const response = await render();
   const html = await response.text();
 
-  assert.match(html, /property="og:title" content="逐字镜｜精确代码对比工具"/);
   assert.match(
     html,
-    /property="og:image" content="http:\/\/localhost(?::3000)?\/og\.png"/,
+    /property="og:title" content="代码对比逐字镜｜精确代码对比工具"/,
+  );
+  assert.match(html, /name="robots" content="index, follow/);
+  assert.match(html, /rel="canonical"/);
+  assert.match(
+    html,
+    /property="og:image" content="http:\/\/localhost(?::3000)?\/og-renamed\.png"/,
   );
   assert.match(html, /name="twitter:card" content="summary_large_image"/);
-  await access(new URL("../public/og.png", import.meta.url));
+  await access(new URL("../public/og-renamed.png", import.meta.url));
+  await access(new URL("../public/robots.txt", import.meta.url));
+  await access(new URL("../public/sitemap.xml", import.meta.url));
 });
 
 test("removes the disposable starter and keeps exact text diff safeguards", async () => {
