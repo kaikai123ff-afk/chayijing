@@ -25,6 +25,17 @@ async function render() {
   );
 }
 
+async function fetchWorker(pathname) {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("route", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  return worker.fetch(
+    new Request(`http://localhost${pathname}`),
+    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+}
+
 test("server-renders the complete code comparison workbench", async () => {
   const response = await render();
   assert.equal(response.status, 200);
@@ -77,6 +88,16 @@ test("publishes product-specific social metadata", async () => {
       "utf8",
     ),
     "google-site-verification: googlef52a125fcc3f3dd3.html\n",
+  );
+});
+
+test("serves the Google verification token without redirecting", async () => {
+  const response = await fetchWorker("/googlef52a125fcc3f3dd3.html");
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("location"), null);
+  assert.equal(
+    await response.text(),
+    "google-site-verification: googlef52a125fcc3f3dd3.html",
   );
 });
 
