@@ -71,6 +71,13 @@ test("publishes product-specific social metadata", async () => {
   await access(new URL("../public/og-renamed.png", import.meta.url));
   await access(new URL("../public/robots.txt", import.meta.url));
   await access(new URL("../public/sitemap.xml", import.meta.url));
+  assert.equal(
+    await readFile(
+      new URL("../public/googlef52a125fcc3f3dd3.html", import.meta.url),
+      "utf8",
+    ),
+    "google-site-verification: googlef52a125fcc3f3dd3.html\n",
+  );
 });
 
 test("removes the disposable starter and keeps local comparison safeguards", async () => {
