@@ -1128,6 +1128,11 @@ button.mini-action.danger {
   gap: 14px;
 }
 
+.side-by-side-viewer {
+  width: min(100%, 1180px);
+  margin: 0 auto;
+}
+
 .image-side-by-side figure {
   min-width: 0;
   margin: 0;
@@ -1153,11 +1158,33 @@ button.mini-action.danger {
   place-items: center;
 }
 
-.image-side-by-side img {
+.image-side-by-side .image-annotation-stage > img {
   width: 100%;
-  height: 340px;
+  height: 100%;
+  position: absolute;
+  inset: 0;
   display: block;
-  object-fit: contain;
+  object-fit: fill;
+}
+
+.image-annotated-shell {
+  overflow: hidden;
+}
+
+.image-annotation-stage {
+  width: 100%;
+  max-height: 520px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 7px;
+}
+
+.side-by-side-hint {
+  margin: 11px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: center;
 }
 
 .image-slider-shell,
@@ -1404,6 +1431,10 @@ button.mini-action.danger {
   z-index: 10;
 }
 
+.difference-marker.visual-only {
+  pointer-events: none;
+}
+
 .difference-marker:focus-visible {
   outline: 3px solid white;
   outline-offset: 4px;
@@ -1586,7 +1617,7 @@ footer p { margin: 0; }
   .image-result-stage { padding: 12px; }
   .image-side-by-side { grid-template-columns: 1fr; }
   .image-side-by-side figure > div { min-height: 250px; }
-  .image-side-by-side img { height: 250px; }
+  .image-side-by-side .image-annotation-stage > img { height: 100%; }
   .image-slider-line i { width: 44px; height: 44px; }
   .difference-navigation {
     grid-template-columns: 52px minmax(0, 1fr) 52px;

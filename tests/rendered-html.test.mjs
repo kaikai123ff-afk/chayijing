@@ -129,6 +129,10 @@ test("removes the disposable starter and keeps local comparison safeguards", asy
   assert.match(imageCompare, /image\/png,image\/jpeg,image\/webp/);
   assert.match(imageCompare, /analyzeImages/);
   assert.match(imageCompare, /差异高亮/);
+  assert.match(imageCompare, /肉眼可见差异处/);
+  assert.match(imageCompare, /两栏用相同编号标出同一处变化/);
+  assert.match(imageCompare, /interactive=\{false\}/);
+  assert.match(imageCompare, /image-annotation-stage/);
   assert.match(imageCompare, /上一处图片差异/);
   assert.match(imageCompare, /下一处图片差异/);
   assert.match(imageCompare, /编号和方框就是差异所在位置/);

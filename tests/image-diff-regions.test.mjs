@@ -9,6 +9,19 @@ function weights(width, height, points) {
   return values;
 }
 
+function filledEvidence(width, height, strengthAt) {
+  const contentWeights = new Uint32Array(width * height);
+  const contentStrengths = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      contentWeights[index] = 1;
+      contentStrengths[index] = strengthAt(x, y);
+    }
+  }
+  return { contentWeights, contentStrengths };
+}
+
 test("keeps a single changed pixel as a visible difference region", () => {
   const width = 100;
   const height = 100;
@@ -103,4 +116,102 @@ test("caps rendered callouts without losing the total region count", () => {
   assert.equal(result.regions.length, 20);
   assert.ok(result.totalRegions > result.regions.length);
   assert.equal(result.hiddenRegions, result.totalRegions - 20);
+});
+
+test("suppresses widespread low-amplitude recompression noise", () => {
+  const width = 96;
+  const height = 72;
+  const evidence = filledEvidence(
+    width,
+    height,
+    (x, y) => 2 + ((x * 17 + y * 29) % 8),
+  );
+  const result = findDifferenceRegions({
+    width,
+    height,
+    ...evidence,
+    outsideWeights: new Uint32Array(width * height),
+  });
+
+  assert.equal(result.totalRegions, 0);
+  assert.deepEqual(result.regions, []);
+});
+
+test("keeps an obvious structure on top of low-amplitude noise", () => {
+  const width = 100;
+  const height = 80;
+  const evidence = filledEvidence(width, height, (x, y) =>
+    x >= 42 && x < 55 && y >= 27 && y < 39 ? 120 : 5,
+  );
+  const result = findDifferenceRegions({
+    width,
+    height,
+    ...evidence,
+    outsideWeights: new Uint32Array(width * height),
+  });
+
+  assert.equal(result.totalRegions, 1);
+  assert.equal(result.regions[0].kind, "content");
+  assert.ok(result.regions[0].x > 0.3);
+  assert.ok(result.regions[0].x + result.regions[0].width < 0.7);
+  assert.ok(result.regions[0].y > 0.2);
+  assert.ok(result.regions[0].y + result.regions[0].height < 0.65);
+});
+
+test("keeps a single high-contrast pixel but ignores isolated antialias noise", () => {
+  const width = 120;
+  const height = 80;
+  const contentWeights = new Uint32Array(width * height);
+  const contentStrengths = new Uint8Array(width * height);
+  for (let y = 4; y < height; y += 10) {
+    for (let x = 4; x < width; x += 10) {
+      const index = y * width + x;
+      contentWeights[index] = 1;
+      contentStrengths[index] = 30;
+    }
+  }
+  const obviousIndex = 63 * width + 103;
+  contentWeights[obviousIndex] = 1;
+  contentStrengths[obviousIndex] = 220;
+
+  const result = findDifferenceRegions({
+    width,
+    height,
+    contentWeights,
+    contentStrengths,
+    outsideWeights: new Uint32Array(width * height),
+  });
+
+  assert.equal(result.totalRegions, 1);
+  const region = result.regions[0];
+  assert.ok(region.x <= 103 / width);
+  assert.ok(region.x + region.width > 103 / width);
+  assert.ok(region.y <= 63 / height);
+  assert.ok(region.y + region.height > 63 / height);
+});
+
+test("keeps a coherent visible color-area change", () => {
+  const width = 100;
+  const height = 100;
+  const contentWeights = new Uint32Array(width * height);
+  const contentStrengths = new Uint8Array(width * height);
+  for (let y = 25; y < 60; y += 1) {
+    for (let x = 30; x < 70; x += 1) {
+      const index = y * width + x;
+      contentWeights[index] = 1;
+      contentStrengths[index] = 22;
+    }
+  }
+
+  const result = findDifferenceRegions({
+    width,
+    height,
+    contentWeights,
+    contentStrengths,
+    outsideWeights: new Uint32Array(width * height),
+  });
+
+  assert.equal(result.totalRegions, 1);
+  assert.equal(result.regions[0].kind, "content");
+  assert.ok(result.regions[0].pixelCount >= 1_300);
 });
