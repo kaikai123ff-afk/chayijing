@@ -7,33 +7,16 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
+import {
+  buildDiffRows,
+  sequenceDiff,
+  splitLines,
+  type TokenPiece,
+} from "./diff-engine";
+import { ImageCompare } from "./ImageCompare";
 
-type EditKind = "equal" | "delete" | "insert";
-type RowKind = "equal" | "modified" | "deleted" | "added";
 type ViewMode = "split" | "unified";
-
-type SequenceEdit<T> = {
-  kind: EditKind;
-  value: T;
-  leftIndex: number | null;
-  rightIndex: number | null;
-};
-
-type LineEdit = SequenceEdit<string>;
-
-type TokenPiece = {
-  kind: "equal" | "removed" | "added";
-  text: string;
-};
-
-type DiffRow = {
-  id: string;
-  kind: RowKind;
-  leftLine: number | null;
-  rightLine: number | null;
-  leftTokens: TokenPiece[];
-  rightTokens: TokenPiece[];
-};
+type ComparisonType = "code" | "image";
 
 const SAMPLE_LEFT = `async function fetchUser(userId: string) {
   const response = await fetch(\`/api/users/\${userId}\`);
@@ -52,400 +35,6 @@ const SAMPLE_RIGHT = `async function fetchUser(id: string) {
   }
   return response.json();
 }`;
-
-const MAX_LCS_CELLS = 6_000_000;
-
-function splitLines(value: string) {
-  if (!value) return [];
-  return value.replace(/\r\n?/g, "\n").split("\n");
-}
-
-function tokenize(line: string) {
-  return (
-    line.match(/\s+|[\p{L}\p{M}\p{N}_$]+|./gu) ?? []
-  );
-}
-
-function greedySequenceDiff<T>(left: T[], right: T[]): SequenceEdit<T>[] {
-  const edits: SequenceEdit<T>[] = [];
-  const lookAhead = 80;
-  let leftIndex = 0;
-  let rightIndex = 0;
-
-  while (leftIndex < left.length && rightIndex < right.length) {
-    if (Object.is(left[leftIndex], right[rightIndex])) {
-      edits.push({
-        kind: "equal",
-        value: left[leftIndex],
-        leftIndex,
-        rightIndex,
-      });
-      leftIndex += 1;
-      rightIndex += 1;
-      continue;
-    }
-
-    let nextRightMatch = -1;
-    for (
-      let cursor = rightIndex + 1;
-      cursor < Math.min(right.length, rightIndex + lookAhead);
-      cursor += 1
-    ) {
-      if (Object.is(left[leftIndex], right[cursor])) {
-        nextRightMatch = cursor;
-        break;
-      }
-    }
-
-    let nextLeftMatch = -1;
-    for (
-      let cursor = leftIndex + 1;
-      cursor < Math.min(left.length, leftIndex + lookAhead);
-      cursor += 1
-    ) {
-      if (Object.is(left[cursor], right[rightIndex])) {
-        nextLeftMatch = cursor;
-        break;
-      }
-    }
-
-    const rightDistance =
-      nextRightMatch < 0 ? Number.POSITIVE_INFINITY : nextRightMatch - rightIndex;
-    const leftDistance =
-      nextLeftMatch < 0 ? Number.POSITIVE_INFINITY : nextLeftMatch - leftIndex;
-
-    if (rightDistance < leftDistance) {
-      edits.push({
-        kind: "insert",
-        value: right[rightIndex],
-        leftIndex: null,
-        rightIndex,
-      });
-      rightIndex += 1;
-    } else {
-      edits.push({
-        kind: "delete",
-        value: left[leftIndex],
-        leftIndex,
-        rightIndex: null,
-      });
-      leftIndex += 1;
-    }
-  }
-
-  while (leftIndex < left.length) {
-    edits.push({
-      kind: "delete",
-      value: left[leftIndex],
-      leftIndex,
-      rightIndex: null,
-    });
-    leftIndex += 1;
-  }
-
-  while (rightIndex < right.length) {
-    edits.push({
-      kind: "insert",
-      value: right[rightIndex],
-      leftIndex: null,
-      rightIndex,
-    });
-    rightIndex += 1;
-  }
-
-  return edits;
-}
-
-function sequenceDiff<T>(left: T[], right: T[]): SequenceEdit<T>[] {
-  const rowLength = right.length + 1;
-  const cellCount = (left.length + 1) * rowLength;
-
-  if (cellCount > MAX_LCS_CELLS) {
-    return greedySequenceDiff(left, right);
-  }
-
-  const table = new Uint32Array(cellCount);
-  for (let leftIndex = left.length - 1; leftIndex >= 0; leftIndex -= 1) {
-    const row = leftIndex * rowLength;
-    const nextRow = (leftIndex + 1) * rowLength;
-    for (
-      let rightIndex = right.length - 1;
-      rightIndex >= 0;
-      rightIndex -= 1
-    ) {
-      table[row + rightIndex] = Object.is(left[leftIndex], right[rightIndex])
-        ? table[nextRow + rightIndex + 1] + 1
-        : Math.max(
-            table[nextRow + rightIndex],
-            table[row + rightIndex + 1],
-          );
-    }
-  }
-
-  const edits: SequenceEdit<T>[] = [];
-  let leftIndex = 0;
-  let rightIndex = 0;
-
-  while (leftIndex < left.length && rightIndex < right.length) {
-    if (Object.is(left[leftIndex], right[rightIndex])) {
-      edits.push({
-        kind: "equal",
-        value: left[leftIndex],
-        leftIndex,
-        rightIndex,
-      });
-      leftIndex += 1;
-      rightIndex += 1;
-    } else if (
-      table[(leftIndex + 1) * rowLength + rightIndex] >=
-      table[leftIndex * rowLength + rightIndex + 1]
-    ) {
-      edits.push({
-        kind: "delete",
-        value: left[leftIndex],
-        leftIndex,
-        rightIndex: null,
-      });
-      leftIndex += 1;
-    } else {
-      edits.push({
-        kind: "insert",
-        value: right[rightIndex],
-        leftIndex: null,
-        rightIndex,
-      });
-      rightIndex += 1;
-    }
-  }
-
-  while (leftIndex < left.length) {
-    edits.push({
-      kind: "delete",
-      value: left[leftIndex],
-      leftIndex,
-      rightIndex: null,
-    });
-    leftIndex += 1;
-  }
-
-  while (rightIndex < right.length) {
-    edits.push({
-      kind: "insert",
-      value: right[rightIndex],
-      leftIndex: null,
-      rightIndex,
-    });
-    rightIndex += 1;
-  }
-
-  return edits;
-}
-
-function tokenSimilarity(leftLine: string, rightLine: string) {
-  const left = tokenize(leftLine).filter((token) => !/^\s+$/.test(token));
-  const right = tokenize(rightLine).filter((token) => !/^\s+$/.test(token));
-
-  if (left.length === 0 || right.length === 0) {
-    return left.length === right.length ? 1 : 0;
-  }
-
-  const edits = sequenceDiff(left, right);
-  const matches = edits.filter((edit) => edit.kind === "equal").length;
-  return matches / Math.max(left.length, right.length);
-}
-
-function alignChangedLines(deleted: LineEdit[], added: LineEdit[]) {
-  if (deleted.length * added.length > 200_000) {
-    const fallback: Array<{
-      kind: "pair" | "delete" | "insert";
-      deleted?: LineEdit;
-      added?: LineEdit;
-    }> = [];
-    const length = Math.max(deleted.length, added.length);
-
-    for (let index = 0; index < length; index += 1) {
-      const deletedLine = deleted[index];
-      const addedLine = added[index];
-      if (deletedLine && addedLine) {
-        fallback.push({ kind: "pair", deleted: deletedLine, added: addedLine });
-      } else if (deletedLine) {
-        fallback.push({ kind: "delete", deleted: deletedLine });
-      } else if (addedLine) {
-        fallback.push({ kind: "insert", added: addedLine });
-      }
-    }
-
-    return fallback;
-  }
-
-  const width = added.length + 1;
-  const costs = new Float32Array((deleted.length + 1) * width);
-
-  for (let leftIndex = 1; leftIndex <= deleted.length; leftIndex += 1) {
-    costs[leftIndex * width] = leftIndex;
-  }
-  for (let rightIndex = 1; rightIndex <= added.length; rightIndex += 1) {
-    costs[rightIndex] = rightIndex;
-  }
-
-  for (let leftIndex = 1; leftIndex <= deleted.length; leftIndex += 1) {
-    for (let rightIndex = 1; rightIndex <= added.length; rightIndex += 1) {
-      const similarity = tokenSimilarity(
-        deleted[leftIndex - 1].value,
-        added[rightIndex - 1].value,
-      );
-      const substitutionCost =
-        similarity < 0.12 ? 2.05 : 0.55 + (1 - similarity) * 0.8;
-      costs[leftIndex * width + rightIndex] = Math.min(
-        costs[(leftIndex - 1) * width + rightIndex] + 1,
-        costs[leftIndex * width + rightIndex - 1] + 1,
-        costs[(leftIndex - 1) * width + rightIndex - 1] + substitutionCost,
-      );
-    }
-  }
-
-  const aligned: Array<{
-    kind: "pair" | "delete" | "insert";
-    deleted?: LineEdit;
-    added?: LineEdit;
-  }> = [];
-  let leftIndex = deleted.length;
-  let rightIndex = added.length;
-  const closeTo = (a: number, b: number) => Math.abs(a - b) < 0.001;
-
-  while (leftIndex > 0 || rightIndex > 0) {
-    if (leftIndex > 0 && rightIndex > 0) {
-      const similarity = tokenSimilarity(
-        deleted[leftIndex - 1].value,
-        added[rightIndex - 1].value,
-      );
-      const substitutionCost =
-        similarity < 0.12 ? 2.05 : 0.55 + (1 - similarity) * 0.8;
-      if (
-        closeTo(
-          costs[leftIndex * width + rightIndex],
-          costs[(leftIndex - 1) * width + rightIndex - 1] + substitutionCost,
-        )
-      ) {
-        aligned.push({
-          kind: "pair",
-          deleted: deleted[leftIndex - 1],
-          added: added[rightIndex - 1],
-        });
-        leftIndex -= 1;
-        rightIndex -= 1;
-        continue;
-      }
-    }
-
-    if (
-      leftIndex > 0 &&
-      (rightIndex === 0 ||
-        closeTo(
-          costs[leftIndex * width + rightIndex],
-          costs[(leftIndex - 1) * width + rightIndex] + 1,
-        ))
-    ) {
-      aligned.push({ kind: "delete", deleted: deleted[leftIndex - 1] });
-      leftIndex -= 1;
-    } else {
-      aligned.push({ kind: "insert", added: added[rightIndex - 1] });
-      rightIndex -= 1;
-    }
-  }
-
-  return aligned.reverse();
-}
-
-function inlineTokens(leftLine: string, rightLine: string) {
-  const edits = sequenceDiff(tokenize(leftLine), tokenize(rightLine));
-
-  return {
-    left: edits
-      .filter((edit) => edit.kind !== "insert")
-      .map<TokenPiece>((edit) => ({
-        kind: edit.kind === "delete" ? "removed" : "equal",
-        text: edit.value,
-      })),
-    right: edits
-      .filter((edit) => edit.kind !== "delete")
-      .map<TokenPiece>((edit) => ({
-        kind: edit.kind === "insert" ? "added" : "equal",
-        text: edit.value,
-      })),
-  };
-}
-
-function buildDiffRows(leftCode: string, rightCode: string): DiffRow[] {
-  const edits = sequenceDiff(splitLines(leftCode), splitLines(rightCode));
-  const rows: DiffRow[] = [];
-  let editIndex = 0;
-  let rowId = 0;
-
-  while (editIndex < edits.length) {
-    const edit = edits[editIndex];
-
-    if (edit.kind === "equal") {
-      rows.push({
-        id: `row-${rowId}`,
-        kind: "equal",
-        leftLine: (edit.leftIndex ?? 0) + 1,
-        rightLine: (edit.rightIndex ?? 0) + 1,
-        leftTokens: [{ kind: "equal", text: edit.value }],
-        rightTokens: [{ kind: "equal", text: edit.value }],
-      });
-      rowId += 1;
-      editIndex += 1;
-      continue;
-    }
-
-    const changedBlock: LineEdit[] = [];
-    while (editIndex < edits.length && edits[editIndex].kind !== "equal") {
-      changedBlock.push(edits[editIndex]);
-      editIndex += 1;
-    }
-
-    const aligned = alignChangedLines(
-      changedBlock.filter((item) => item.kind === "delete"),
-      changedBlock.filter((item) => item.kind === "insert"),
-    );
-
-    for (const item of aligned) {
-      if (item.kind === "pair" && item.deleted && item.added) {
-        const tokens = inlineTokens(item.deleted.value, item.added.value);
-        rows.push({
-          id: `row-${rowId}`,
-          kind: "modified",
-          leftLine: (item.deleted.leftIndex ?? 0) + 1,
-          rightLine: (item.added.rightIndex ?? 0) + 1,
-          leftTokens: tokens.left,
-          rightTokens: tokens.right,
-        });
-      } else if (item.kind === "delete" && item.deleted) {
-        rows.push({
-          id: `row-${rowId}`,
-          kind: "deleted",
-          leftLine: (item.deleted.leftIndex ?? 0) + 1,
-          rightLine: null,
-          leftTokens: [{ kind: "removed", text: item.deleted.value }],
-          rightTokens: [],
-        });
-      } else if (item.added) {
-        rows.push({
-          id: `row-${rowId}`,
-          kind: "added",
-          leftLine: null,
-          rightLine: (item.added.rightIndex ?? 0) + 1,
-          leftTokens: [],
-          rightTokens: [{ kind: "added", text: item.added.value }],
-        });
-      }
-      rowId += 1;
-    }
-  }
-
-  return rows;
-}
 
 function visibleWhitespace(value: string) {
   return value.replace(/ /g, "·").replace(/\t/g, "→   ");
@@ -473,23 +62,24 @@ function lineCount(value: string) {
   return value ? splitLines(value).length : 0;
 }
 
-function buildPatch(rows: DiffRow[], leftName: string, rightName: string) {
+function buildPatch(
+  leftCode: string,
+  rightCode: string,
+  leftName: string,
+  rightName: string,
+) {
   const lines = [`--- ${leftName}`, `+++ ${rightName}`];
-  for (const row of rows) {
-    const left = row.leftTokens.map((token) => token.text).join("");
-    const right = row.rightTokens.map((token) => token.text).join("");
-    if (row.kind === "equal") lines.push(`  ${left}`);
-    if (row.kind === "deleted") lines.push(`- ${left}`);
-    if (row.kind === "added") lines.push(`+ ${right}`);
-    if (row.kind === "modified") {
-      lines.push(`- ${left}`);
-      lines.push(`+ ${right}`);
-    }
+  for (const edit of sequenceDiff(splitLines(leftCode), splitLines(rightCode))) {
+    if (edit.kind === "equal") lines.push(`  ${edit.value}`);
+    if (edit.kind === "delete") lines.push(`- ${edit.value}`);
+    if (edit.kind === "insert") lines.push(`+ ${edit.value}`);
   }
   return lines.join("\n");
 }
 
 export default function Home() {
+  const [comparisonType, setComparisonType] =
+    useState<ComparisonType>("code");
   const [leftCode, setLeftCode] = useState(SAMPLE_LEFT);
   const [rightCode, setRightCode] = useState(SAMPLE_RIGHT);
   const [leftName, setLeftName] = useState("before.ts");
@@ -573,7 +163,9 @@ export default function Home() {
 
   const copyPatch = async () => {
     try {
-      await navigator.clipboard.writeText(buildPatch(rows, leftName, rightName));
+      await navigator.clipboard.writeText(
+        buildPatch(leftCode, rightCode, leftName, rightName),
+      );
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -593,25 +185,57 @@ export default function Home() {
         </a>
         <div className="header-status">
           <span className="status-dot" aria-hidden="true" />
-          本地处理 · 代码不会上传
+          本地处理 · {comparisonType === "code" ? "代码" : "图片"}不会上传
         </div>
       </header>
 
       <section className="hero" id="top">
         <div className="eyebrow">
-          <span>PRECISION CODE DIFF</span>
+          <span>
+            {comparisonType === "code"
+              ? "PRECISION CODE DIFF"
+              : "PIXEL IMAGE DIFF"}
+          </span>
           <span className="eyebrow-line" />
-          <span>精确到词、标点与空格</span>
+          <span>
+            {comparisonType === "code"
+              ? "精确到词、标点与空格"
+              : "精确到像素与图片尺寸"}
+          </span>
         </div>
         <h1>
-          代码差在哪，<em>一眼看清。</em>
+          {comparisonType === "code" ? "代码" : "图片"}差在哪，
+          <em>一眼看清。</em>
         </h1>
         <p>
-          把两个版本放在一起，每一行变化都会对齐；哪怕只改了一个词，
-          也会在行内单独标出。
+          {comparisonType === "code"
+            ? "把两个版本放在一起，每一行变化都会对齐；哪怕只改了一个词，也会在行内单独标出。"
+            : "上传两张图片，在浏览器本地并排、滑动或高亮查看差异，不会上传图片。"}
         </p>
       </section>
 
+      <nav className="product-mode-switch" aria-label="对比类型">
+        <button
+          className={comparisonType === "code" ? "active" : ""}
+          onClick={() => setComparisonType("code")}
+          type="button"
+          aria-pressed={comparisonType === "code"}
+        >
+          <span aria-hidden="true">&lt;/&gt;</span>
+          代码对比
+        </button>
+        <button
+          className={comparisonType === "image" ? "active" : ""}
+          onClick={() => setComparisonType("image")}
+          type="button"
+          aria-pressed={comparisonType === "image"}
+        >
+          <span aria-hidden="true">▧</span>
+          图片对比
+        </button>
+      </nav>
+
+      <div className="mode-panel" hidden={comparisonType !== "code"}>
       <section className="workbench" aria-label="代码对比工作台">
         <div className="workbench-toolbar">
           <div className="live-badge">
@@ -887,6 +511,10 @@ export default function Home() {
           )}
         </div>
       </section>
+      </div>
+      <div className="mode-panel" hidden={comparisonType !== "image"}>
+        <ImageCompare />
+      </div>
 
       <footer>
         <div>

@@ -32,8 +32,11 @@ test("server-renders the complete code comparison workbench", async () => {
 
   const html = await response.text();
   assert.match(html, /<html[^>]*lang="zh-CN"/i);
-  assert.match(html, /<title>代码对比逐字镜｜精确代码对比工具<\/title>/i);
-  assert.match(html, /代码差在哪，<em>一眼看清。<\/em>/);
+  assert.match(html, /<title>代码对比逐字镜｜代码与图片差异对比工具<\/title>/i);
+  assert.match(html, /代码(?:<!-- -->)?差在哪，<em>一眼看清。<\/em>/);
+  assert.match(html, /aria-label="对比类型"/);
+  assert.match(html, /代码对比/);
+  assert.match(html, /图片对比/);
   assert.match(html, /aria-label="原始版本代码"/);
   assert.match(html, /aria-label="新版本代码"/);
   assert.match(html, /<label[^>]*for="left-code"[^>]*>\s*原始版本\s*<\/label>/);
@@ -42,7 +45,7 @@ test("server-renders the complete code comparison workbench", async () => {
   assert.match(html, /显示空白符/);
   assert.match(html, /复制差异/);
   assert.match(html, /aria-live="polite"/);
-  assert.match(html, /本地处理 · 代码不会上传/);
+  assert.match(html, /本地处理 · (?:<!-- -->)?代码(?:<!-- -->)?不会上传/);
   assert.match(html, /代码对比逐字镜首页/);
   assert.match(html, /"@type":"WebApplication"/);
   assert.match(html, /"name":"代码对比逐字镜"/);
@@ -56,7 +59,7 @@ test("publishes product-specific social metadata", async () => {
 
   assert.match(
     html,
-    /property="og:title" content="代码对比逐字镜｜精确代码对比工具"/,
+    /property="og:title" content="代码对比逐字镜｜代码与图片差异对比工具"/,
   );
   assert.match(html, /name="robots" content="index, follow/);
   assert.match(html, /rel="canonical"/);
@@ -70,24 +73,34 @@ test("publishes product-specific social metadata", async () => {
   await access(new URL("../public/sitemap.xml", import.meta.url));
 });
 
-test("removes the disposable starter and keeps exact text diff safeguards", async () => {
-  const [page, layout, styles, packageJson, lockfile] = await Promise.all([
+test("removes the disposable starter and keeps local comparison safeguards", async () => {
+  const [page, imageCompare, diffEngine, layout, styles, packageJson, lockfile] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ImageCompare.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/diff-engine.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../package-lock.json", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /function sequenceDiff/);
-  assert.match(page, /function inlineTokens/);
-  assert.match(page, /function alignChangedLines/);
+  assert.match(diffEngine, /function sequenceDiff/);
+  assert.match(diffEngine, /function inlineTokens/);
+  assert.match(diffEngine, /function alignChangedLines/);
+  assert.match(diffEngine, /findForcedJsonPairs/);
   assert.match(page, /replace\(\/ \/g, "·"\)/);
   assert.match(page, /replace\(\/\\t\/g, "→ {3}"\)/);
   assert.match(page, /token-\$\{token\.kind\}/);
   assert.match(styles, /\.token-removed/);
   assert.match(styles, /\.token-added/);
+  assert.match(styles, /\.image-slider-stage/);
+  assert.match(styles, /\.difference-overlay/);
+  assert.match(imageCompare, /image\/png,image\/jpeg,image\/webp/);
+  assert.match(imageCompare, /analyzeImages/);
+  assert.match(imageCompare, /差异高亮/);
+  assert.match(imageCompare, /图片只在当前浏览器中解码和分析，不会上传/);
   assert.doesNotMatch(page, /dangerouslySetInnerHTML/);
+  assert.doesNotMatch(imageCompare, /fetch\(|XMLHttpRequest|FormData/);
   assert.doesNotMatch(page, /SkeletonPreview|codex-preview/);
   assert.doesNotMatch(layout, /Starter Project|codex-preview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);

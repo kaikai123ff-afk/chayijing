@@ -23,9 +23,9 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-proto") ??
     (host.startsWith("localhost") ? "http" : "https");
   const origin = `${protocol}://${host}`;
-  const title = "代码对比逐字镜｜精确代码对比工具";
+  const title = "代码对比逐字镜｜代码与图片差异对比工具";
   const description =
-    "代码对比逐字镜：在线逐行、逐词比较两个代码版本，精确高亮新增、删除、修改、标点和空格差异。";
+    "代码对比逐字镜：在线逐行逐词比较代码，或在浏览器本地并排、滑动、高亮比较两张图片，精确找出细微差异。";
   const imageUrl = new URL("/og-renamed.png", origin).toString();
   const canonicalUrl = new URL("/", origin).toString();
 
@@ -90,7 +90,7 @@ export default function RootLayout({
               applicationCategory: "DeveloperApplication",
               operatingSystem: "Any",
               description:
-                "在线逐行、逐词比较两个代码版本，精确高亮新增、删除、修改、标点和空格差异。",
+                "在线逐行逐词比较代码，或在浏览器本地并排、滑动、高亮比较两张图片，精确找出细微差异。",
               offers: {
                 "@type": "Offer",
                 price: "0",
