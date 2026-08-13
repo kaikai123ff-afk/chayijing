@@ -74,9 +74,10 @@ test("publishes product-specific social metadata", async () => {
 });
 
 test("removes the disposable starter and keeps local comparison safeguards", async () => {
-  const [page, imageCompare, diffEngine, layout, styles, packageJson, lockfile] = await Promise.all([
+  const [page, imageCompare, imageRegions, diffEngine, layout, styles, packageJson, lockfile] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/ImageCompare.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/image-diff-regions.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/diff-engine.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -95,9 +96,19 @@ test("removes the disposable starter and keeps local comparison safeguards", asy
   assert.match(styles, /\.token-added/);
   assert.match(styles, /\.image-slider-stage/);
   assert.match(styles, /\.difference-overlay/);
+  assert.match(styles, /\.difference-region-box/);
+  assert.match(styles, /\.difference-marker/);
   assert.match(imageCompare, /image\/png,image\/jpeg,image\/webp/);
   assert.match(imageCompare, /analyzeImages/);
   assert.match(imageCompare, /差异高亮/);
+  assert.match(imageCompare, /上一处图片差异/);
+  assert.match(imageCompare, /下一处图片差异/);
+  assert.match(imageCompare, /编号和方框就是差异所在位置/);
+  assert.match(imageCompare, /stats\.previewWidth/);
+  assert.match(imageCompare, /tabIndex=\{index === activeRegion \? 0 : -1\}/);
+  assert.match(imageRegions, /findDifferenceRegions/);
+  assert.match(imageRegions, /contentWeights/);
+  assert.match(imageRegions, /outsideWeights/);
   assert.match(imageCompare, /图片只在当前浏览器中解码和分析，不会上传/);
   assert.doesNotMatch(page, /dangerouslySetInnerHTML/);
   assert.doesNotMatch(imageCompare, /fetch\(|XMLHttpRequest|FormData/);

@@ -4,6 +4,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import {
+  Fragment,
   useDeferredValue,
   useEffect,
   useRef,
@@ -12,6 +13,10 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from "react";
+import {
+  findDifferenceRegions,
+  type DifferenceRegion,
+} from "./image-diff-regions";
 
 type ImageSide = "left" | "right";
 type ImageView = "side-by-side" | "slider" | "difference";
@@ -24,6 +29,8 @@ type ImageAsset = {
   size: number;
   width: number;
   height: number;
+  previewWidth: number;
+  previewHeight: number;
 };
 
 type DiffStats = {
@@ -34,6 +41,9 @@ type DiffStats = {
   overlapPixels: number;
   outsidePixels: number;
   differenceRate: number;
+  regions: DifferenceRegion[];
+  totalRegions: number;
+  hiddenRegions: number;
   leftPreview: string;
   rightPreview: string;
   differencePreview: string;
@@ -56,6 +66,16 @@ function formatBytes(bytes: number) {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
+}
+
+function describeRegionPosition(region: DifferenceRegion) {
+  const horizontal =
+    region.centerX < 0.34 ? "左侧" : region.centerX > 0.66 ? "右侧" : "中间";
+  const vertical =
+    region.centerY < 0.34 ? "上方" : region.centerY > 0.66 ? "下方" : "中部";
+  return horizontal === "中间" && vertical === "中部"
+    ? "画面中央"
+    : `画面${vertical}${horizontal}`;
 }
 
 function loadHtmlImage(url: string) {
@@ -92,9 +112,11 @@ async function createImageAsset(file: File): Promise<ImageAsset> {
       width: image.naturalWidth,
       height: image.naturalHeight,
     };
-  } catch {
+  } catch (error) {
     URL.revokeObjectURL(url);
-    throw new Error("无法读取此图片，请更换文件后重试");
+    throw error instanceof Error
+      ? error
+      : new Error("无法读取此图片，请更换文件后重试");
   }
 }
 
@@ -203,6 +225,8 @@ function analyzeImages(
     preview.width,
     preview.height,
   );
+  const contentWeights = new Uint32Array(preview.width * preview.height);
+  const outsideWeights = new Uint32Array(preview.width * preview.height);
   const threshold = sensitivity === "high" ? 0 : sensitivity === "standard" ? 18 : 42;
   let changedPixels = 0;
   let exactChangedPixels = 0;
@@ -216,6 +240,7 @@ function analyzeImages(
     green: number,
     blue: number,
     alpha: number,
+    kind: "content" | "outside",
   ) => {
     const previewX = Math.min(
       preview.width - 1,
@@ -226,9 +251,18 @@ function analyzeImages(
       Math.floor((y / height) * preview.height),
     );
     const previewOffset = (previewY * preview.width + previewX) * 4;
-    differenceData.data[previewOffset] = red;
-    differenceData.data[previewOffset + 1] = green;
-    differenceData.data[previewOffset + 2] = blue;
+    const previewIndex = previewY * preview.width + previewX;
+    if (kind === "content") {
+      contentWeights[previewIndex] += 1;
+    } else {
+      outsideWeights[previewIndex] += 1;
+    }
+    const contentAlreadyMarked = contentWeights[previewIndex] > 0;
+    if (kind === "content" || !contentAlreadyMarked) {
+      differenceData.data[previewOffset] = red;
+      differenceData.data[previewOffset + 1] = green;
+      differenceData.data[previewOffset + 2] = blue;
+    }
     differenceData.data[previewOffset + 3] = Math.max(
       differenceData.data[previewOffset + 3],
       alpha,
@@ -273,26 +307,36 @@ function analyzeImages(
               35,
               116,
               Math.min(245, 150 + delta),
+              "content",
             );
           }
         } else if (leftPresent || rightPresent) {
           outsidePixels += 1;
-          markDifference(x, canvasY, 242, 148, 24, 205);
+          markDifference(x, canvasY, 242, 148, 24, 205, "outside");
         }
       }
     }
   }
 
   differenceContext.putImageData(differenceData, 0, 0);
+  const regionResult = findDifferenceRegions({
+    width: preview.width,
+    height: preview.height,
+    contentWeights,
+    outsideWeights,
+  });
   return {
     width,
     height,
+    previewWidth: preview.width,
+    previewHeight: preview.height,
     changedPixels,
     exactChangedPixels,
     overlapPixels,
     outsidePixels,
     differenceRate:
       overlapPixels === 0 ? 0 : (changedPixels / overlapPixels) * 100,
+    ...regionResult,
     leftPreview: canvasPreview(leftCanvas, preview.width, preview.height),
     rightPreview: canvasPreview(rightCanvas, preview.width, preview.height),
     differencePreview: differenceCanvas.toDataURL("image/png"),
@@ -409,13 +453,14 @@ export function ImageCompare() {
   const [rightAsset, setRightAsset] = useState<ImageAsset | null>(null);
   const [leftError, setLeftError] = useState("");
   const [rightError, setRightError] = useState("");
-  const [view, setView] = useState<ImageView>("slider");
+  const [view, setView] = useState<ImageView>("difference");
   const [sliderPosition, setSliderPosition] = useState(50);
   const [sensitivity, setSensitivity] = useState<Sensitivity>("standard");
   const [alignment, setAlignment] = useState<Alignment>("top-left");
   const [stats, setStats] = useState<DiffStats | null>(null);
   const [processing, setProcessing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  const [activeRegion, setActiveRegion] = useState(0);
   const deferredSensitivity = useDeferredValue(sensitivity);
   const deferredAlignment = useDeferredValue(alignment);
   const leftRef = useRef<ImageAsset | null>(null);
@@ -460,7 +505,10 @@ export function ImageCompare() {
           deferredSensitivity,
           deferredAlignment,
         );
-        if (!cancelled) setStats(result);
+        if (!cancelled) {
+          setStats(result);
+          setActiveRegion(0);
+        }
       } catch (error) {
         if (!cancelled) {
           setStats(null);
@@ -574,6 +622,15 @@ export function ImageCompare() {
   const noDetectedContentDifference = Boolean(
     stats && stats.changedPixels === 0,
   );
+  const selectedRegion = stats?.regions[activeRegion] ?? null;
+
+  const moveRegion = (direction: number) => {
+    if (!stats || stats.regions.length === 0) return;
+    setActiveRegion(
+      (current) =>
+        Math.max(0, Math.min(stats.regions.length - 1, current + direction)),
+    );
+  };
 
   const handleSliderKey = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -762,7 +819,13 @@ export function ImageCompare() {
             </div>
           ) : view === "slider" ? (
             <div className="image-slider-shell">
-              <div className="image-slider-stage checkerboard" style={{ aspectRatio: `${stats.width} / ${stats.height}` }}>
+              <div
+                className="image-slider-stage checkerboard"
+                style={{
+                  aspectRatio: `${stats.previewWidth} / ${stats.previewHeight}`,
+                  maxWidth: `${Math.max(44, (670 * stats.previewWidth) / stats.previewHeight)}px`,
+                }}
+              >
                 <img src={stats.leftPreview} alt={`原始图片：${leftAsset.name}`} />
                 <div className="slider-new-layer" style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}>
                   <img src={stats.rightPreview} alt={`新图片：${rightAsset.name}`} />
@@ -788,14 +851,107 @@ export function ImageCompare() {
             </div>
           ) : (
             <div className="difference-viewer">
-              <div className="difference-stage checkerboard" style={{ aspectRatio: `${stats.width} / ${stats.height}` }}>
+              {stats.regions.length > 0 ? (
+                <div className="difference-navigation" aria-label="差异位置导航">
+                  <button
+                    type="button"
+                    onClick={() => moveRegion(-1)}
+                    disabled={activeRegion === 0}
+                    aria-label="上一处图片差异"
+                  >
+                    ← 上一处
+                  </button>
+                  <p aria-live="polite">
+                    <strong>
+                      {activeRegion + 1} / {stats.regions.length}
+                    </strong>
+                    <span>
+                      {selectedRegion?.kind === "outside"
+                        ? "尺寸外区域"
+                        : "内容差异"}
+                      {selectedRegion
+                        ? ` · ${describeRegionPosition(selectedRegion)} · ${formatNumber(selectedRegion.pixelCount)} 像素`
+                        : ""}
+                    </span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => moveRegion(1)}
+                    disabled={activeRegion === stats.regions.length - 1}
+                    aria-label="下一处图片差异"
+                  >
+                    下一处 →
+                  </button>
+                </div>
+              ) : null}
+              <div
+                className="difference-stage checkerboard"
+                style={{
+                  aspectRatio: `${stats.previewWidth} / ${stats.previewHeight}`,
+                  maxWidth: `${Math.max(44, (670 * stats.previewWidth) / stats.previewHeight)}px`,
+                }}
+              >
                 <img className="difference-base" src={stats.rightPreview} alt={`新图片底图：${rightAsset.name}`} />
                 <img className="difference-overlay" src={stats.differencePreview} alt="图片像素差异高亮图" />
+                {stats.regions.map((region, index) => {
+                  const markerLeft = Math.max(
+                    0.025,
+                    Math.min(0.975, region.x + Math.min(region.width * 0.12, 0.012)),
+                  );
+                  const markerTop = Math.max(
+                    0.025,
+                    Math.min(
+                      0.975,
+                      region.y > 0.07
+                        ? region.y - 0.018
+                        : region.y + Math.min(region.height * 0.15, 0.02),
+                    ),
+                  );
+                  return (
+                  <Fragment key={region.id}>
+                    <span
+                      className={`difference-region-box ${region.kind} ${
+                        index === activeRegion ? "active" : ""
+                      }`}
+                      style={{
+                        left: `${region.x * 100}%`,
+                        top: `${region.y * 100}%`,
+                        width: `${region.width * 100}%`,
+                        height: `${region.height * 100}%`,
+                      }}
+                      aria-hidden="true"
+                    />
+                    <button
+                      className={`difference-marker ${region.kind} ${
+                        index === activeRegion ? "active" : ""
+                      }`}
+                      style={{
+                        left: `clamp(24px, ${markerLeft * 100}%, calc(100% - 24px))`,
+                        top: `clamp(24px, ${markerTop * 100}%, calc(100% - 24px))`,
+                      }}
+                      type="button"
+                      onClick={() => setActiveRegion(index)}
+                      aria-label={`第 ${index + 1} 处，${
+                        region.kind === "outside" ? "尺寸外区域" : "内容差异"
+                      }，${describeRegionPosition(region)}，${formatNumber(region.pixelCount)} 像素`}
+                      aria-pressed={index === activeRegion}
+                      tabIndex={index === activeRegion ? 0 : -1}
+                    >
+                      <span>{index + 1}</span>
+                    </button>
+                  </Fragment>
+                  );
+                })}
               </div>
+              {stats.hiddenRegions > 0 ? (
+                <p className="hidden-regions-note">
+                  已标出最大的 {stats.regions.length} 处；另有 {stats.hiddenRegions} 处较小差异仍保留高亮，但未显示编号和方框。
+                </p>
+              ) : null}
               <div className="difference-legend">
                 <span><i className="difference-pink" />内容差异</span>
                 <span><i className="difference-orange" />尺寸外区域</span>
-                <span>敏感度会影响差异像素统计</span>
+                <span>编号和方框就是差异所在位置</span>
               </div>
             </div>
           )}
