@@ -16,6 +16,7 @@ import {
 import {
   findDifferenceRegions,
   type DifferenceRegion,
+  type DifferenceRegionResult,
 } from "./image-diff-regions";
 
 type ImageSide = "left" | "right";
@@ -31,7 +32,7 @@ type ImageAsset = {
   height: number;
 };
 
-type DiffStats = {
+type DiffStats = DifferenceRegionResult & {
   width: number;
   height: number;
   previewWidth: number;
@@ -41,12 +42,25 @@ type DiffStats = {
   overlapPixels: number;
   outsidePixels: number;
   differenceRate: number;
-  regions: DifferenceRegion[];
-  totalRegions: number;
-  hiddenRegions: number;
   leftPreview: string;
   rightPreview: string;
   differencePreview: string;
+};
+
+type ZoomPreviews = {
+  leftSource: string;
+  rightSource: string;
+  regionId: string;
+  left: string;
+  right: string;
+  rangeWidth: number;
+  rangeHeight: number;
+  regionBox: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
 };
 
 type AnnotationLayerProps = {
@@ -64,6 +78,8 @@ const MAX_COMPARE_PIXELS = 6_000_000;
 const MAX_PREVIEW_EDGE = 1400;
 const MAX_PREVIEW_PIXELS = 2_000_000;
 const ANALYSIS_STRIPE_HEIGHT = 192;
+const ZOOM_PREVIEW_WIDTH = 420;
+const ZOOM_PREVIEW_HEIGHT = 280;
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -85,13 +101,160 @@ function describeRegionPosition(region: DifferenceRegion) {
     : `画面${vertical}${horizontal}`;
 }
 
+function describeDimensionDifference(left: ImageAsset, right: ImageAsset) {
+  const widthDelta = right.width - left.width;
+  const heightDelta = right.height - left.height;
+  const parts: string[] = [];
+
+  if (widthDelta !== 0) {
+    parts.push(
+      `新图片${widthDelta > 0 ? "宽" : "窄"} ${formatNumber(Math.abs(widthDelta))}px`,
+    );
+  }
+  if (heightDelta !== 0) {
+    parts.push(
+      `新图片${heightDelta > 0 ? "高" : "矮"} ${formatNumber(Math.abs(heightDelta))}px`,
+    );
+  }
+
+  return parts.join("、");
+}
+
+function computeZoomCrop(region: DifferenceRegion, width: number, height: number) {
+  const targetAspect = 1.5;
+  const regionWidth = Math.max(1, region.width * width);
+  const regionHeight = Math.max(1, region.height * height);
+  let cropWidth = Math.min(
+    width,
+    Math.max(regionWidth, Math.min(120, width), regionWidth * 2.8),
+  );
+  let cropHeight = Math.min(
+    height,
+    Math.max(regionHeight, Math.min(80, height), regionHeight * 2.8),
+  );
+
+  if (cropWidth / cropHeight < targetAspect) {
+    const expandedWidth = cropHeight * targetAspect;
+    if (expandedWidth <= width) cropWidth = Math.max(cropWidth, expandedWidth);
+  } else {
+    const expandedHeight = cropWidth / targetAspect;
+    if (expandedHeight <= height) cropHeight = Math.max(cropHeight, expandedHeight);
+  }
+
+  const centerX = region.centerX * width;
+  const centerY = region.centerY * height;
+  const x = Math.max(0, Math.min(width - cropWidth, centerX - cropWidth / 2));
+  const y = Math.max(0, Math.min(height - cropHeight, centerY - cropHeight / 2));
+
+  return { x, y, width: cropWidth, height: cropHeight };
+}
+
+function zoomViewport(crop: ReturnType<typeof computeZoomCrop>) {
+  const scale = Math.min(
+    ZOOM_PREVIEW_WIDTH / crop.width,
+    ZOOM_PREVIEW_HEIGHT / crop.height,
+  );
+  const width = crop.width * scale;
+  const height = crop.height * scale;
+  return {
+    scale,
+    x: (ZOOM_PREVIEW_WIDTH - width) / 2,
+    y: (ZOOM_PREVIEW_HEIGHT - height) / 2,
+    width,
+    height,
+  };
+}
+
+async function createZoomPreview(
+  source: string,
+  crop: ReturnType<typeof computeZoomCrop>,
+) {
+  const image = await loadHtmlImage(source);
+  const canvas = createCanvas(ZOOM_PREVIEW_WIDTH, ZOOM_PREVIEW_HEIGHT);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("浏览器无法创建局部放大图");
+  const viewport = zoomViewport(crop);
+  context.imageSmoothingEnabled = viewport.scale < 1;
+  if (context.imageSmoothingEnabled) context.imageSmoothingQuality = "high";
+  context.drawImage(
+    image,
+    crop.x,
+    crop.y,
+    crop.width,
+    crop.height,
+    viewport.x,
+    viewport.y,
+    viewport.width,
+    viewport.height,
+  );
+  return canvas.toDataURL("image/png");
+}
+
+function DifferenceZoomComparison({
+  activeRegion,
+  selectedRegion,
+  zoomPreviews,
+}: {
+  activeRegion: number;
+  selectedRegion: DifferenceRegion | null;
+  zoomPreviews: ZoomPreviews | null;
+}) {
+  if (!selectedRegion) return null;
+
+  return (
+    <section className="difference-zoom" aria-label="当前差异局部放大">
+      <div className="difference-zoom-heading">
+        <div>
+          <span>第 {activeRegion + 1} 处 · {describeRegionPosition(selectedRegion)}</span>
+          <strong>原图与新图局部放大</strong>
+        </div>
+        {zoomPreviews ? (
+          <small>
+            局部范围 {formatNumber(zoomPreviews.rangeWidth)}×{formatNumber(zoomPreviews.rangeHeight)}px
+          </small>
+        ) : null}
+      </div>
+      {zoomPreviews ? (
+        <div className="difference-zoom-grid">
+          {([
+            ["原始图片", zoomPreviews.left],
+            ["新图片", zoomPreviews.right],
+          ] as const).map(([label, source]) => (
+            <figure key={label}>
+              <figcaption>{label}</figcaption>
+              <div className="difference-zoom-image checkerboard">
+                <img src={source} alt={`${label}第 ${activeRegion + 1} 处局部放大`} />
+                <span
+                  className="difference-zoom-box"
+                  style={{
+                    left: `${zoomPreviews.regionBox.left}%`,
+                    top: `${zoomPreviews.regionBox.top}%`,
+                    width: `${zoomPreviews.regionBox.width}%`,
+                    height: `${zoomPreviews.regionBox.height}%`,
+                  }}
+                  aria-hidden="true"
+                />
+              </div>
+            </figure>
+          ))}
+        </div>
+      ) : (
+        <p className="difference-zoom-loading">正在生成局部放大对照…</p>
+      )}
+    </section>
+  );
+}
+
 function DifferenceAnnotations({
   stats,
   activeRegion,
   onSelect,
   interactive = true,
 }: AnnotationLayerProps) {
+  const dense = stats.regions.length > 18;
+
   return stats.regions.map((region, index) => {
+    const isActive = index === activeRegion;
     const markerLeft = Math.max(
       0.025,
       Math.min(0.975, region.x + Math.min(region.width * 0.12, 0.012)),
@@ -110,7 +273,7 @@ function DifferenceAnnotations({
       <Fragment key={region.id}>
         <span
           className={`difference-region-box ${region.kind} ${
-            index === activeRegion ? "active" : ""
+            isActive ? "active" : dense ? "dense-muted" : ""
           }`}
           style={{
             left: `${region.x * 100}%`,
@@ -120,10 +283,10 @@ function DifferenceAnnotations({
           }}
           aria-hidden="true"
         />
-        {interactive ? (
+        {dense && !isActive ? null : interactive ? (
           <button
             className={`difference-marker ${region.kind} ${
-              index === activeRegion ? "active" : ""
+              isActive ? "active" : ""
             }`}
             style={{
               left: `clamp(24px, ${markerLeft * 100}%, calc(100% - 24px))`,
@@ -131,18 +294,16 @@ function DifferenceAnnotations({
             }}
             type="button"
             onClick={() => onSelect(index)}
-            aria-label={`第 ${index + 1} 处，${
-              region.kind === "outside" ? "尺寸外区域" : "肉眼可见差异"
-            }，${describeRegionPosition(region)}`}
-            aria-pressed={index === activeRegion}
-            tabIndex={index === activeRegion ? 0 : -1}
+            aria-label={`第 ${index + 1} 处，肉眼可见内容差异，${describeRegionPosition(region)}`}
+            aria-pressed={isActive}
+            tabIndex={isActive ? 0 : -1}
           >
             <span>{index + 1}</span>
           </button>
         ) : (
           <span
             className={`difference-marker visual-only ${region.kind} ${
-              index === activeRegion ? "active" : ""
+              isActive ? "active" : ""
             }`}
             style={{
               left: `clamp(24px, ${markerLeft * 100}%, calc(100% - 24px))`,
@@ -186,7 +347,7 @@ function DifferenceNavigation({
           {activeRegion + 1} / {stats.regions.length}
         </strong>
         <span>
-          {selectedRegion?.kind === "outside" ? "尺寸外区域" : "肉眼可见差异"}
+          {stats.regions.length > 18 ? "差异较多，当前只显示此编号" : "肉眼可见内容差异"}
           {selectedRegion ? ` · ${describeRegionPosition(selectedRegion)}` : ""}
         </span>
       </p>
@@ -627,6 +788,7 @@ export function ImageCompare() {
   const [processing, setProcessing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
   const [activeRegion, setActiveRegion] = useState(0);
+  const [zoomPreviews, setZoomPreviews] = useState<ZoomPreviews | null>(null);
   const deferredSensitivity = useDeferredValue(sensitivity);
   const deferredAlignment = useDeferredValue(alignment);
   const leftRef = useRef<ImageAsset | null>(null);
@@ -791,8 +953,102 @@ export function ImageCompare() {
   const noDetectedContentDifference = Boolean(
     stats && !hasVisibleContentDifference,
   );
-  const noDetectedDifference = Boolean(stats && stats.totalRegions === 0);
   const selectedRegion = stats?.regions[activeRegion] ?? null;
+
+  useEffect(() => {
+    if (!stats || !selectedRegion) return;
+
+    let cancelled = false;
+    const crop = computeZoomCrop(
+      selectedRegion,
+      stats.previewWidth,
+      stats.previewHeight,
+    );
+    Promise.all([
+      createZoomPreview(stats.leftPreview, crop),
+      createZoomPreview(stats.rightPreview, crop),
+    ])
+      .then(([left, right]) => {
+        if (cancelled) return;
+        const regionX = selectedRegion.x * stats.previewWidth;
+        const regionY = selectedRegion.y * stats.previewHeight;
+        const regionWidth = selectedRegion.width * stats.previewWidth;
+        const regionHeight = selectedRegion.height * stats.previewHeight;
+        const viewport = zoomViewport(crop);
+        const leftEdge = Math.max(
+          0,
+          Math.min(
+            ZOOM_PREVIEW_WIDTH,
+            viewport.x + (regionX - crop.x) * viewport.scale,
+          ),
+        );
+        const topEdge = Math.max(
+          0,
+          Math.min(
+            ZOOM_PREVIEW_HEIGHT,
+            viewport.y + (regionY - crop.y) * viewport.scale,
+          ),
+        );
+        const rightEdge = Math.max(
+          leftEdge,
+          Math.min(
+            ZOOM_PREVIEW_WIDTH,
+            viewport.x + (regionX + regionWidth - crop.x) * viewport.scale,
+          ),
+        );
+        const bottomEdge = Math.max(
+          topEdge,
+          Math.min(
+            ZOOM_PREVIEW_HEIGHT,
+            viewport.y + (regionY + regionHeight - crop.y) * viewport.scale,
+          ),
+        );
+        setZoomPreviews({
+          leftSource: stats.leftPreview,
+          rightSource: stats.rightPreview,
+          regionId: selectedRegion.id,
+          left,
+          right,
+          rangeWidth: Math.max(
+            1,
+            Math.round(crop.width * (stats.width / stats.previewWidth)),
+          ),
+          rangeHeight: Math.max(
+            1,
+            Math.round(crop.height * (stats.height / stats.previewHeight)),
+          ),
+          regionBox: {
+            left: (leftEdge / ZOOM_PREVIEW_WIDTH) * 100,
+            top: (topEdge / ZOOM_PREVIEW_HEIGHT) * 100,
+            width: ((rightEdge - leftEdge) / ZOOM_PREVIEW_WIDTH) * 100,
+            height: ((bottomEdge - topEdge) / ZOOM_PREVIEW_HEIGHT) * 100,
+          },
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setZoomPreviews((current) =>
+            current?.leftSource === stats.leftPreview &&
+            current.rightSource === stats.rightPreview &&
+            current.regionId === selectedRegion.id
+              ? null
+              : current,
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRegion, stats]);
+
+  const currentZoomPreviews =
+    zoomPreviews !== null &&
+    zoomPreviews.leftSource === stats?.leftPreview &&
+    zoomPreviews.rightSource === stats?.rightPreview &&
+    zoomPreviews.regionId === selectedRegion?.id
+      ? zoomPreviews
+      : null;
 
   const moveRegion = (direction: number) => {
     if (!stats || stats.regions.length === 0) return;
@@ -860,9 +1116,11 @@ export function ImageCompare() {
               <span aria-hidden="true">{exactMatch ? "✓" : "!"}</span>
               {exactMatch
                 ? "没有差异"
-                : noDetectedDifference
-                  ? "未检出明显差异"
-                  : "发现差异"}
+                : dimensionsDiffer && noDetectedContentDifference
+                  ? "仅尺寸不同"
+                  : noDetectedContentDifference
+                    ? "未发现明显内容差异"
+                    : "发现内容差异"}
             </div>
           ) : null}
         </div>
@@ -872,7 +1130,7 @@ export function ImageCompare() {
             <div className="image-summary" aria-label="图片差异统计">
               <div className="image-stat">
                 <strong>{formatNumber(stats.totalRegions)}</strong>
-                <span>肉眼可见差异处</span>
+                <span>肉眼可见内容差异</span>
               </div>
               <div className="image-stat accent">
                 <strong>{hasVisibleContentDifference ? "有" : "未发现"}</strong>
@@ -892,7 +1150,13 @@ export function ImageCompare() {
             {dimensionsDiffer ? (
               <div className="dimension-notice">
                 <span aria-hidden="true">i</span>
-                图片尺寸不同，当前按原始像素{alignment === "top-left" ? "左上" : "居中"}对齐；橙色表示只有一侧存在的区域。
+                <div>
+                  <strong>{describeDimensionDifference(leftAsset, rightAsset)}</strong>
+                  <p>
+                    原始 {leftAsset.width}×{leftAsset.height}px / 新图 {rightAsset.width}×{rightAsset.height}px；
+                    当前按原始像素{alignment === "top-left" ? "左上" : "居中"}对齐。在“差异高亮”视图中，橙色边带只表示多出的画布范围，不参与内容差异编号。
+                  </p>
+                </div>
               </div>
             ) : null}
             <div className="result-toolbar image-result-toolbar">
@@ -957,7 +1221,7 @@ export function ImageCompare() {
           </>
         ) : null}
 
-        <div className="image-result-stage" aria-live="polite">
+        <div className="image-result-stage">
           {!leftAsset || !rightAsset ? (
             <div className="empty-state">
               <span aria-hidden="true">▧</span>
@@ -965,13 +1229,13 @@ export function ImageCompare() {
               <p>图片只在当前浏览器中解码和分析，不会上传。</p>
             </div>
           ) : analysisError ? (
-            <div className="empty-state compact">
+            <div className="empty-state compact" role="alert">
               <span aria-hidden="true">!</span>
               <strong>图片分析失败</strong>
               <p>{analysisError}</p>
             </div>
           ) : processing || !stats ? (
-            <div className="empty-state compact processing-state">
+            <div className="empty-state compact processing-state" role="status" aria-live="polite">
               <span aria-hidden="true">◌</span>
               <strong>正在本地分析图片</strong>
               <p>大尺寸图片可能需要几秒钟。</p>
@@ -983,6 +1247,11 @@ export function ImageCompare() {
                 activeRegion={activeRegion}
                 selectedRegion={selectedRegion}
                 onMove={moveRegion}
+              />
+              <DifferenceZoomComparison
+                activeRegion={activeRegion}
+                selectedRegion={selectedRegion}
+                zoomPreviews={currentZoomPreviews}
               />
               <div className="image-side-by-side">
                 <figure>
@@ -1061,6 +1330,11 @@ export function ImageCompare() {
                 selectedRegion={selectedRegion}
                 onMove={moveRegion}
               />
+              <DifferenceZoomComparison
+                activeRegion={activeRegion}
+                selectedRegion={selectedRegion}
+                zoomPreviews={currentZoomPreviews}
+              />
               <div
                 className="difference-stage checkerboard"
                 style={{
@@ -1069,7 +1343,7 @@ export function ImageCompare() {
                 }}
               >
                 <img className="difference-base" src={stats.rightPreview} alt={`新图片底图：${rightAsset.name}`} />
-                <img className="difference-overlay" src={stats.differencePreview} alt="图片像素差异高亮图" />
+                <img className="difference-overlay" src={stats.differencePreview} alt="图片内容差异与尺寸范围高亮图" />
                 <DifferenceAnnotations
                   stats={stats}
                   activeRegion={activeRegion}
@@ -1078,13 +1352,13 @@ export function ImageCompare() {
               </div>
               {stats.hiddenRegions > 0 ? (
                 <p className="hidden-regions-note">
-                  已标出最大的 {stats.regions.length} 处；另有 {stats.hiddenRegions} 处较小差异仍保留高亮，但未显示编号和方框。
+                  已标出显著度最高的 {stats.regions.length} 处；另有 {stats.hiddenRegions} 处显著度较低的差异仍保留高亮，但未显示编号和方框。
                 </p>
               ) : null}
               <div className="difference-legend">
-                <span><i className="difference-pink" />肉眼可见差异</span>
-                <span><i className="difference-orange" />尺寸外区域</span>
-                <span>编号和方框就是差异所在位置</span>
+                <span><i className="difference-pink" />肉眼可见内容差异</span>
+                <span><i className="difference-orange" />橙色边带：尺寸范围不同（不编号）</span>
+                <span>编号只对应画面内容变化</span>
               </div>
             </div>
           )}

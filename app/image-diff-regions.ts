@@ -13,9 +13,22 @@ export type DifferenceRegion = {
 };
 
 export type DifferenceRegionResult = {
+  /** Numbered, navigable visual-content changes only. */
   regions: DifferenceRegion[];
+  /** Total visual-content changes before applying maxRegions. */
   totalRegions: number;
+  /** Visual-content changes that remain highlighted but are not numbered. */
   hiddenRegions: number;
+  /** Size-only evidence is one semantic summary and never enters navigation. */
+  outsideSummary: OutsideDifferenceSummary | null;
+};
+
+export type OutsideDifferenceSummary = {
+  kind: "outside";
+  pixelCount: number;
+  areaCount: number;
+  /** Exact, unnumbered bands used to draw non-misleading size-only geometry. */
+  areas: DifferenceRegion[];
 };
 
 type RegionInput = {
@@ -396,27 +409,15 @@ function selectRegions(rawRegions: RawRegion[], requestedLimit: number) {
   if (limit === 0) return [];
   if (byScore.length <= limit) return byScore;
 
-  // When both categories exist, keep at least one callout for each rather than
-  // allowing a large size strip to hide every content change (or vice versa).
-  const selected: RawRegion[] = [];
-  if (limit >= 2) {
-    const bestContent = byScore.find((region) => region.kind === "content");
-    const bestOutside = byScore.find((region) => region.kind === "outside");
-    if (bestContent && bestOutside) selected.push(bestContent, bestOutside);
-  }
-  const alreadySelected = new Set(selected);
-  for (const region of byScore) {
-    if (selected.length >= limit) break;
-    if (!alreadySelected.has(region)) selected.push(region);
-  }
-  return selected;
+  return byScore.slice(0, limit);
 }
 
 /**
  * Groups preview-pixel evidence into readable callout boxes. Low-amplitude,
  * high-frequency content changes are treated as a recompression noise floor;
  * strong pixels, coherent structures and visible color areas are retained.
- * Size-only evidence is kept separate and decomposed into rectangles.
+ * Size-only evidence is kept as one summary, with exact unnumbered rectangles
+ * for drawing. It never consumes a content navigation number or region limit.
  */
 export function findDifferenceRegions({
   width,
@@ -440,11 +441,14 @@ export function findDifferenceRegions({
     throw new Error("差异区域数据尺寸不一致");
   }
 
-  const rawRegions = [
-    ...contentRegions(width, height, contentWeights, contentStrengths),
-    ...outsideRegions(width, height, outsideWeights),
-  ];
-  const selected = selectRegions(rawRegions, maxRegions)
+  const rawContentRegions = contentRegions(
+    width,
+    height,
+    contentWeights,
+    contentStrengths,
+  );
+  const rawOutsideAreas = outsideRegions(width, height, outsideWeights);
+  const selected = selectRegions(rawContentRegions, maxRegions)
     .sort(
       (left, right) =>
         left.centerY - right.centerY ||
@@ -462,10 +466,39 @@ export function findDifferenceRegions({
       centerY: region.centerY,
       pixelCount: region.pixelCount,
     }));
+  const outsideAreas = rawOutsideAreas
+    .sort(
+      (left, right) =>
+        left.centerY - right.centerY || left.centerX - right.centerX,
+    )
+    .map<DifferenceRegion>((region, index) => ({
+      id: `outside-area-${index + 1}`,
+      kind: "outside",
+      x: region.x,
+      y: region.y,
+      width: region.width,
+      height: region.height,
+      centerX: region.centerX,
+      centerY: region.centerY,
+      pixelCount: region.pixelCount,
+    }));
+  const outsidePixelCount = outsideAreas.reduce(
+    (total, area) => total + area.pixelCount,
+    0,
+  );
 
   return {
     regions: selected,
-    totalRegions: rawRegions.length,
-    hiddenRegions: Math.max(0, rawRegions.length - selected.length),
+    totalRegions: rawContentRegions.length,
+    hiddenRegions: Math.max(0, rawContentRegions.length - selected.length),
+    outsideSummary:
+      outsideAreas.length === 0
+        ? null
+        : {
+            kind: "outside",
+            pixelCount: outsidePixelCount,
+            areaCount: outsideAreas.length,
+            areas: outsideAreas,
+          },
   };
 }

@@ -37,6 +37,7 @@ test("keeps a single changed pixel as a visible difference region", () => {
   assert.equal(result.regions[0].pixelCount, 1);
   assert.ok(result.regions[0].width > 0);
   assert.ok(result.regions[0].height > 0);
+  assert.equal(result.outsideSummary, null);
 });
 
 test("groups nearby changed pixels and separates distant ones", () => {
@@ -58,7 +59,7 @@ test("groups nearby changed pixels and separates distant ones", () => {
   assert.ok(result.regions[0].centerY < result.regions[1].centerY);
 });
 
-test("never merges content differences with size-only regions", () => {
+test("keeps size-only evidence out of numbered content navigation", () => {
   const width = 80;
   const height = 80;
   const result = findDifferenceRegions({
@@ -68,14 +69,19 @@ test("never merges content differences with size-only regions", () => {
     outsideWeights: weights(width, height, [[40, 40, 5]]),
   });
 
-  assert.equal(result.totalRegions, 2);
-  assert.deepEqual(
-    new Set(result.regions.map((region) => region.kind)),
-    new Set(["content", "outside"]),
-  );
+  assert.equal(result.totalRegions, 1);
+  assert.equal(result.hiddenRegions, 0);
+  assert.equal(result.regions.length, 1);
+  assert.equal(result.regions[0].kind, "content");
+  assert.equal(result.regions[0].pixelCount, 3);
+  assert.equal(result.outsideSummary?.kind, "outside");
+  assert.equal(result.outsideSummary?.pixelCount, 5);
+  assert.equal(result.outsideSummary?.areaCount, 1);
+  assert.equal(result.outsideSummary?.areas.length, 1);
+  assert.equal(result.outsideSummary?.areas[0].kind, "outside");
 });
 
-test("keeps a right and bottom size overhang as separate bands", () => {
+test("represents an L-shaped size overhang as one summary with exact bands", () => {
   const width = 100;
   const height = 100;
   const outsidePoints = [];
@@ -92,10 +98,19 @@ test("keeps a right and bottom size overhang as separate bands", () => {
     outsideWeights: weights(width, height, outsidePoints),
   });
 
-  assert.equal(result.totalRegions, 2);
-  assert.equal(result.regions.some((region) => region.width === 1 && region.height === 1), false);
-  assert.ok(result.regions.some((region) => region.height > 0.75 && region.width < 0.3));
-  assert.ok(result.regions.some((region) => region.width > 0.7 && region.height < 0.3));
+  assert.equal(result.totalRegions, 0);
+  assert.equal(result.hiddenRegions, 0);
+  assert.deepEqual(result.regions, []);
+  assert.equal(result.outsideSummary?.pixelCount, 3_600);
+  assert.equal(result.outsideSummary?.areaCount, 2);
+  const areas = result.outsideSummary?.areas ?? [];
+  assert.equal(
+    areas.some((area) => area.width === 1 && area.height === 1),
+    false,
+  );
+  assert.ok(areas.some((area) => area.height > 0.75 && area.width < 0.3));
+  assert.ok(areas.some((area) => area.width > 0.7 && area.height < 0.3));
+  assert.ok(areas.every((area) => area.id.startsWith("outside-area-")));
 });
 
 test("caps rendered callouts without losing the total region count", () => {
@@ -116,6 +131,33 @@ test("caps rendered callouts without losing the total region count", () => {
   assert.equal(result.regions.length, 20);
   assert.ok(result.totalRegions > result.regions.length);
   assert.equal(result.hiddenRegions, result.totalRegions - 20);
+  assert.equal(result.outsideSummary, null);
+});
+
+test("size-only areas do not consume the content-region limit", () => {
+  const width = 120;
+  const height = 80;
+  const result = findDifferenceRegions({
+    width,
+    height,
+    contentWeights: weights(width, height, [
+      [10, 10, 1],
+      [60, 35, 8],
+      [105, 65, 3],
+    ]),
+    outsideWeights: weights(width, height, [
+      [0, 0, 11],
+      [119, 79, 13],
+    ]),
+    maxRegions: 2,
+  });
+
+  assert.equal(result.regions.length, 2);
+  assert.ok(result.regions.every((region) => region.kind === "content"));
+  assert.equal(result.totalRegions, 3);
+  assert.equal(result.hiddenRegions, 1);
+  assert.equal(result.outsideSummary?.pixelCount, 24);
+  assert.equal(result.outsideSummary?.areaCount, 2);
 });
 
 test("suppresses widespread low-amplitude recompression noise", () => {
