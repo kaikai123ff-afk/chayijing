@@ -43,8 +43,8 @@ test("server-renders the complete code comparison workbench", async () => {
 
   const html = await response.text();
   assert.match(html, /<html[^>]*lang="zh-CN"/i);
-  assert.match(html, /<title>代码对比逐字镜｜代码与图片差异对比工具<\/title>/i);
-  assert.match(html, /代码(?:<!-- -->)?差在哪，<em>一眼看清。<\/em>/);
+  assert.match(html, /<title>代码对比工具｜图片对比、图片找不同 - 差异镜<\/title>/i);
+  assert.match(html, /在线代码对比与图片对比，<em>一眼找出每处差异。<\/em>/);
   assert.match(html, /aria-label="对比类型"/);
   assert.match(html, /代码对比/);
   assert.match(html, /图片对比/);
@@ -57,9 +57,15 @@ test("server-renders the complete code comparison workbench", async () => {
   assert.match(html, /复制差异/);
   assert.match(html, /aria-live="polite"/);
   assert.match(html, /本地处理 · (?:<!-- -->)?代码(?:<!-- -->)?不会上传/);
-  assert.match(html, /代码对比逐字镜首页/);
+  assert.match(html, /差异镜首页/);
+  assert.match(html, /免费在线代码对比与图片差异对比/);
+  assert.match(html, /代码对比：精确到单词、标点和空格/);
+  assert.match(html, /图片对比：并排查看与图片找不同/);
+  assert.match(html, /免登录，本地处理敏感内容/);
+  assert.match(html, /"@type":"WebSite"/);
   assert.match(html, /"@type":"WebApplication"/);
-  assert.match(html, /"name":"代码对比逐字镜"/);
+  assert.match(html, /"name":"差异镜"/);
+  assert.doesNotMatch(html, /name="keywords"/i);
   assert.match(html, /class="token token-removed">userId<\/span>/);
   assert.match(html, /class="token token-added">id<\/span>/);
 });
@@ -70,18 +76,31 @@ test("publishes product-specific social metadata", async () => {
 
   assert.match(
     html,
-    /property="og:title" content="代码对比逐字镜｜代码与图片差异对比工具"/,
+    /property="og:title" content="代码对比工具｜图片对比、图片找不同 - 差异镜"/,
   );
   assert.match(html, /name="robots" content="index, follow/);
-  assert.match(html, /rel="canonical"/);
   assert.match(
     html,
-    /property="og:image" content="http:\/\/localhost(?::3000)?\/og-renamed\.png"/,
+    /rel="canonical" href="https:\/\/zhuzijing-code-diff\.linzirongxxyy\.chatgpt\.site\/?"/,
   );
+  assert.match(html, /property="og:site_name" content="差异镜"/);
+  assert.match(
+    html,
+    /property="og:image" content="https:\/\/zhuzijing-code-diff\.linzirongxxyy\.chatgpt\.site\/og\.png"/,
+  );
+  assert.match(html, /差异镜是免费的在线代码对比与图片对比工具/);
   assert.match(html, /name="twitter:card" content="summary_large_image"/);
-  await access(new URL("../public/og-renamed.png", import.meta.url));
+  await access(new URL("../public/og.png", import.meta.url));
   await access(new URL("../public/robots.txt", import.meta.url));
   await access(new URL("../public/sitemap.xml", import.meta.url));
+  assert.equal(
+    await readFile(new URL("../public/robots.txt", import.meta.url), "utf8"),
+    "User-agent: *\nAllow: /\n\nSitemap: https://zhuzijing-code-diff.linzirongxxyy.chatgpt.site/sitemap.xml\n",
+  );
+  assert.match(
+    await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8"),
+    /<loc>https:\/\/zhuzijing-code-diff\.linzirongxxyy\.chatgpt\.site\/<\/loc>[\s\S]*<lastmod>2026-08-14<\/lastmod>/,
+  );
   assert.equal(
     await readFile(
       new URL("../public/googlef52a125fcc3f3dd3.html", import.meta.url),

@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { headers } from "next/headers";
 import "./globals.css";
+
+const PRODUCTION_URL = "https://zhuzijing-code-diff.linzirongxxyy.chatgpt.site";
+const SITE_NAME = "差异镜";
+const TITLE = "代码对比工具｜图片对比、图片找不同 - 差异镜";
+const DESCRIPTION =
+  "差异镜是免费的在线代码对比与图片对比工具：支持逐行、逐词、标点和空格差异高亮，也可将两张图片并排、滑动或局部放大找不同。代码与图片均在浏览器本地处理，不上传服务器。";
+const SOCIAL_IMAGE = `${PRODUCTION_URL}/og.png`;
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,63 +19,82 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const requestHeaders = await headers();
-  const host =
-    requestHeaders.get("x-forwarded-host") ??
-    requestHeaders.get("host") ??
-    "localhost:3000";
-  const protocol =
-    requestHeaders.get("x-forwarded-proto") ??
-    (host.startsWith("localhost") ? "http" : "https");
-  const origin = `${protocol}://${host}`;
-  const title = "代码对比逐字镜｜代码与图片差异对比工具";
-  const description =
-    "代码对比逐字镜：在线逐行逐词比较代码，或在浏览器本地并排、滑动、高亮比较两张图片，精确找出细微差异。";
-  const imageUrl = new URL("/og-renamed.png", origin).toString();
-  const canonicalUrl = new URL("/", origin).toString();
-
-  return {
-    metadataBase: new URL(origin),
-    title,
-    description,
-    alternates: {
-      canonical: canonicalUrl,
-    },
-    robots: {
+export const metadata: Metadata = {
+  metadataBase: new URL(PRODUCTION_URL),
+  title: TITLE,
+  description: DESCRIPTION,
+  alternates: {
+    canonical: `${PRODUCTION_URL}/`,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
       index: true,
       follow: true,
-      googleBot: {
-        index: true,
-        follow: true,
-        "max-image-preview": "large",
-        "max-snippet": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    type: "website",
+    url: `${PRODUCTION_URL}/`,
+    siteName: SITE_NAME,
+    locale: "zh_CN",
+    images: [
+      {
+        url: SOCIAL_IMAGE,
+        width: 1200,
+        height: 630,
+        alt: "差异镜在线代码对比与图片对比工具",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: [SOCIAL_IMAGE],
+  },
+};
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${PRODUCTION_URL}/#website`,
+      url: `${PRODUCTION_URL}/`,
+      name: SITE_NAME,
+      alternateName: ["代码对比逐字镜", "在线代码与图片对比工具"],
+      inLanguage: "zh-CN",
+    },
+    {
+      "@type": "WebApplication",
+      "@id": `${PRODUCTION_URL}/#application`,
+      url: `${PRODUCTION_URL}/`,
+      name: SITE_NAME,
+      image: SOCIAL_IMAGE,
+      applicationCategory: "UtilitiesApplication",
+      operatingSystem: "Any",
+      inLanguage: "zh-CN",
+      isAccessibleForFree: true,
+      description: DESCRIPTION,
+      featureList: [
+        "逐行、逐词、标点和空格代码差异高亮",
+        "图片并排、滑杆、差异高亮与局部放大",
+        "浏览器本地处理，免登录使用",
+      ],
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "CNY",
       },
     },
-    openGraph: {
-      title,
-      description,
-      type: "website",
-      url: canonicalUrl,
-      siteName: "代码对比逐字镜",
-      locale: "zh_CN",
-      images: [
-        {
-          url: imageUrl,
-          width: 1200,
-          height: 630,
-          alt: "代码对比逐字镜在线工具",
-        },
-      ],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: [imageUrl],
-    },
-  };
-}
+  ],
+};
 
 export default function RootLayout({
   children,
@@ -83,20 +108,7 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "WebApplication",
-              name: "代码对比逐字镜",
-              applicationCategory: "DeveloperApplication",
-              operatingSystem: "Any",
-              description:
-                "在线逐行逐词比较代码，或在浏览器本地并排、滑动、高亮比较两张图片，精确找出细微差异。",
-              offers: {
-                "@type": "Offer",
-                price: "0",
-                priceCurrency: "CNY",
-              },
-            }).replace(/</g, "\\u003c"),
+            __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
           }}
         />
       </body>

@@ -176,11 +176,11 @@ export default function Home() {
   return (
     <main>
       <header className="site-header">
-        <a className="brand" href="#top" aria-label="代码对比逐字镜首页">
+        <a className="brand" href="#top" aria-label="差异镜首页">
           <span className="brand-mark" aria-hidden="true">
             Δ
           </span>
-          <span>代码对比逐字镜</span>
+          <span>差异镜</span>
           <span className="brand-version">DIFF</span>
         </a>
         <div className="header-status">
@@ -192,25 +192,18 @@ export default function Home() {
       <section className="hero" id="top">
         <div className="eyebrow">
           <span>
-            {comparisonType === "code"
-              ? "PRECISION CODE DIFF"
-              : "PIXEL IMAGE DIFF"}
+            CODE &amp; IMAGE DIFF
           </span>
           <span className="eyebrow-line" />
           <span>
-            {comparisonType === "code"
-              ? "精确到词、标点与空格"
-              : "精确到像素与图片尺寸"}
+            在线代码与图片对比工具
           </span>
         </div>
         <h1>
-          {comparisonType === "code" ? "代码" : "图片"}差在哪，
-          <em>一眼看清。</em>
+          在线代码对比与图片对比，<em>一眼找出每处差异。</em>
         </h1>
         <p>
-          {comparisonType === "code"
-            ? "把两个版本放在一起，每一行变化都会对齐；哪怕只改了一个词，也会在行内单独标出。"
-            : "上传两张图片，在浏览器本地并排、滑动或高亮查看差异，不会上传图片。"}
+          粘贴两个版本的代码，逐行、逐词查看修改；或选择两张图片，通过并排、滑杆、差异高亮和局部放大完成图片找不同。所有比较均在浏览器本地完成。
         </p>
       </section>
 
@@ -516,10 +509,53 @@ export default function Home() {
         <ImageCompare />
       </div>
 
+      <section className="seo-overview" aria-labelledby="seo-overview-title">
+        <div className="seo-overview-heading">
+          <span className="section-index">03 / 功能说明</span>
+          <h2 id="seo-overview-title">免费在线代码对比与图片差异对比</h2>
+          <p>
+            差异镜把在线代码对比和图片找不同放在同一个页面里，无需登录或安装软件，打开即可使用。
+          </p>
+        </div>
+
+        <div className="seo-feature-grid">
+          <article>
+            <span className="seo-feature-icon" aria-hidden="true">&lt;/&gt;</span>
+            <h3>代码对比：精确到单词、标点和空格</h3>
+            <p>
+              粘贴新旧两版代码，自动对齐新增、删除和修改行，并在行内标出不同的单词、字符、标点与空格。适合代码审查，以及 JSON、SQL、配置文件和脚本版本比较。
+            </p>
+          </article>
+          <article>
+            <span className="seo-feature-icon" aria-hidden="true">▧</span>
+            <h3>图片对比：并排查看与图片找不同</h3>
+            <p>
+              选择两张图片，可用并排、滑杆和图片差异高亮查看变化；编号定位肉眼可见的内容差异，局部放大核对细节，并单独说明图片尺寸范围变化。
+            </p>
+          </article>
+          <article>
+            <span className="seo-feature-icon" aria-hidden="true">◎</span>
+            <h3>免登录，本地处理敏感内容</h3>
+            <p>
+              代码与 PNG、JPG、WebP 图片只在当前浏览器中分析，不上传服务器。比较结果即时生成，关闭页面后不会在网站中保留你的内容。
+            </p>
+          </article>
+        </div>
+
+        <div className="seo-steps" aria-label="使用步骤">
+          <strong>三步完成对比</strong>
+          <ol>
+            <li><span>1</span>选择代码对比或图片对比</li>
+            <li><span>2</span>放入两个版本的内容</li>
+            <li><span>3</span>查看高亮、编号与局部细节</li>
+          </ol>
+        </div>
+      </section>
+
       <footer>
         <div>
           <span className="footer-mark">Δ</span>
-          <strong>代码对比逐字镜</strong>
+          <strong>差异镜</strong>
         </div>
         <p>所有比较都在你的浏览器内完成。</p>
       </footer>
