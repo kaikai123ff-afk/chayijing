@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const PRODUCTION_URL = "https://zhuzijing-code-diff.linzirongxxyy.chatgpt.site";
+const PRODUCTION_URL = "https://chayijing.chayijing-tools.workers.dev";
 const SITE_NAME = "差异镜";
 const TITLE = "代码对比工具｜图片对比、图片找不同 - 差异镜";
 const DESCRIPTION =

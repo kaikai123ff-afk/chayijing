@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://zhuzijing-code-diff.linzirongxxyy.chatgpt.site/sitemap.xml
+Sitemap: https://chayijing.chayijing-tools.workers.dev/sitemap.xml

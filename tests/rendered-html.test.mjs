@@ -81,12 +81,12 @@ test("publishes product-specific social metadata", async () => {
   assert.match(html, /name="robots" content="index, follow/);
   assert.match(
     html,
-    /rel="canonical" href="https:\/\/zhuzijing-code-diff\.linzirongxxyy\.chatgpt\.site\/?"/,
+    /rel="canonical" href="https:\/\/chayijing\.chayijing-tools\.workers\.dev\/?"/,
   );
   assert.match(html, /property="og:site_name" content="差异镜"/);
   assert.match(
     html,
-    /property="og:image" content="https:\/\/zhuzijing-code-diff\.linzirongxxyy\.chatgpt\.site\/og\.png"/,
+    /property="og:image" content="https:\/\/chayijing\.chayijing-tools\.workers\.dev\/og\.png"/,
   );
   assert.match(html, /差异镜是免费的在线代码对比与图片对比工具/);
   assert.match(html, /name="twitter:card" content="summary_large_image"/);
@@ -95,11 +95,11 @@ test("publishes product-specific social metadata", async () => {
   await access(new URL("../public/sitemap.xml", import.meta.url));
   assert.equal(
     await readFile(new URL("../public/robots.txt", import.meta.url), "utf8"),
-    "User-agent: *\nAllow: /\n\nSitemap: https://zhuzijing-code-diff.linzirongxxyy.chatgpt.site/sitemap.xml\n",
+    "User-agent: *\nAllow: /\n\nSitemap: https://chayijing.chayijing-tools.workers.dev/sitemap.xml\n",
   );
   assert.match(
     await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8"),
-    /<loc>https:\/\/zhuzijing-code-diff\.linzirongxxyy\.chatgpt\.site\/<\/loc>[\s\S]*<lastmod>2026-08-14<\/lastmod>/,
+    /<loc>https:\/\/chayijing\.chayijing-tools\.workers\.dev\/<\/loc>[\s\S]*<lastmod>2026-08-17<\/lastmod>/,
   );
   assert.equal(
     await readFile(
