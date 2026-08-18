@@ -90,7 +90,22 @@ test("publishes product-specific social metadata", async () => {
   );
   assert.match(html, /差异镜是免费的在线代码对比与图片对比工具/);
   assert.match(html, /name="twitter:card" content="summary_large_image"/);
+  assert.match(html, /rel="icon" href="\/favicon\.ico" type="image\/x-icon"/);
+  assert.match(
+    html,
+    /rel="icon" href="\/favicon-48x48\.png" sizes="48x48" type="image\/png"/,
+  );
+  assert.match(
+    html,
+    /rel="apple-touch-icon" href="\/apple-touch-icon\.png" sizes="180x180" type="image\/png"/,
+  );
   await access(new URL("../public/og.png", import.meta.url));
+  await access(new URL("../public/favicon.ico", import.meta.url));
+  await access(new URL("../public/favicon-16x16.png", import.meta.url));
+  await access(new URL("../public/favicon-32x32.png", import.meta.url));
+  await access(new URL("../public/favicon-48x48.png", import.meta.url));
+  await access(new URL("../public/apple-touch-icon.png", import.meta.url));
+  await access(new URL("../public/icon-512.png", import.meta.url));
   await access(new URL("../public/robots.txt", import.meta.url));
   await access(new URL("../public/sitemap.xml", import.meta.url));
   assert.equal(
